@@ -1,0 +1,254 @@
+MongoDB is a NoSQL, document-oriented database that stores data in a flexible, JSON-like format called BSON (Binary JSON). Unlike relational databases (like MySQL or PostgreSQL) that store data in tables and rows, MongoDB organizes data into collections of documents—each document being a self-contained record with its own structure.
+
+Replication (High Availability)
+MongoDB uses Replica Sets—clusters of multiple servers holding the same data for fault tolerance.
+Primary node: Handles all writes.
+Secondary nodes: Replicate data asynchronously from the primary.
+If the primary fails, a new primary is automatically elected using consensus protocols.
+
+Sharding (Horizontal Scaling)
+For massive datasets, MongoDB divides data across multiple machines using shards. Each shard holds a subset of data, determined by a shard key.
+A mongos router handles routing queries to the correct shard(s). Sharding allows MongoDB to scale horizontally as data grows, avoiding bottlenecks.
+
+Aggregation Framework
+MongoDB’s aggregation pipeline is a powerful way to process and transform data, similar to SQL’s GROUP BY but more flexible.Each stage in the pipeline transforms data and passes it to the next.
+
+Concurrency and Locking
+MongoDB uses document-level locking in WiredTiger, allowing multiple clients to update different documents in the same collection concurrently. This improves write throughput compared to older versions that used collection-level locks.
+
+In MongoDB, the entire data hierarchy is organized around three core components — Database, Collection, and Document.
+
+Database
+A Database in MongoDB is the highest-level container that holds related collections. Think of it like a folder that stores multiple files (collections). Each application typically has its own database, isolating data from others.
+MongoDB can host multiple databases on a single server. The mongod process manages all databases and their associated data files.
+A special system database maintains metadata about users, roles, and configurations.
+use studentDB
+This command switches to or creates a new database named studentDB.
+
+If you run db.createCollection("grades") after switching, MongoDB will store this collection inside the studentDB namespace.
+Each database has a unique namespace like:
+studentDB.grades
+
+Important system databases:
+admin – used for administrative tasks and authentication.
+config – used in sharded clusters to store cluster metadata.
+local – used to store replication logs and local data.
+
+Collection
+A Collection is a group of MongoDB documents, similar to a table in relational databases, but without fixed columns or schema. Documents inside a collection can have different fields and data types.
+db.createCollection("students")
+This creates a collection named students inside studentDB.
+You can also implicitly create a collection by inserting a document:
+db.students.insertOne({ name: "Ash", age: 15, city: "Pallet Town" })
+MongoDB automatically creates the students collection if it doesn’t already exist.
+
+Document
+A Document is the fundamental data unit in MongoDB. It’s a set of key–value pairs, stored in BSON (Binary JSON) format. BSON supports rich data types such as ObjectId, Date, Array, and nested objects — something traditional relational tables can’t store directly.
+{
+  "_id": ObjectId("64f9a123c9b7e1a2c7e09e1b"),
+  "name": "Brock",
+}
+_id is a unique identifier automatically created by MongoDB (unless manually set). It ensures every document in a collection can be uniquely found.
+{
+  orderId: 101,
+  customer: { name: "Red", city: "Pallet Town" }
+}
+Now if you query:
+
+db.orders.find({ "customer.city": "Pallet Town" })
+MongoDB can reach deep into nested fields and filter based on them — a powerful feature not available in most SQL systems without joins.
+MongoDB Server
+ ├── Database (studentDB)
+ │    ├── Collection (students)
+ │    │     ├── Document 1
+ │    │     ├── Document 2
+ │    │     └── Document 3
+ │    └── Collection (grades)
+ │          ├── Document 1
+ │          └── Document 2
+ └── Database (admin)
+
+Each layer has independence:
+A database can have many collections.
+A collection can store millions of documents.
+A document can have nested structures (arrays, objects).
+
+db.books.insertMany([
+  { title: "MongoDB Basics", author: "John", available: true },
+  { title: "Data Structures", author: "Mary", available: false }
+])
+
+Database = logical container for collections.
+Collection = schema-less grouping of documents.
+Document = BSON object representing one record.
+
+Cursor: a pointer to the result set
+A cursor is a pointer returned by a find() query that lets MongoDB send matching documents in small, efficient batches instead of flooding your system with millions of records at once.
+cursor is a pointer that MongoDB gives you after you run a query.
+Instead of giving you all the documents at once, it gives you a cursor that you can use to get documents gradually.
+
+What Happens When You Run db.collection.find()
+MongoDB does NOT send all documents immediately
+If millions of documents match, sending them all at once would:
+use too much RAM
+choke the network
+slow everything down
+When you execute a find() operation, MongoDB doesn’t immediately return all matching documents—it instead creates a cursor object on the server that holds the query result, and the client fetches documents from it in batches.
+
+So instead of sending everything, MongoDB creates a cursor.
+A cursor is like a bookmark that knows:
+where the matching documents are stored
+which ones have already been sent
+which ones are next
+Acursor is a pointer or iterator that allows you to traverse through the result set of a query.
+
+This allows MongoDB to give data in small chunks.
+Cursor returns the first batch of data
+MongoDB sends results in batches.
+When your program needs more data, it asks the cursor
+
+Cursor keeps its place, It remembers:
+how many documents have been sent
+where to resume
+which batch is next
+
+Documents sent in chunks instead of all at once.
+Your program processes data as it arrives.
+MongoDB only sends more when your code asks for it.
+
+In the MongoDB shell (mongosh):
+db.users.find() returns a cursor
+The shell automatically prints only the first 20 (not 101!)
+If you scroll (it command), it keeps printing more
+
+In an app, you always use a cursor — NOT the MongoDB shell
+
+cursor = db.users.find({});
+while (cursor.hasNext()) {
+  printjson(cursor.next()); // Your code calls cursor.next()
+Returns doc #1
+}
+
+In code, looping over cursor fetches all docs automatically
+const cursor = db.collection('users').find();
+for await (const doc of cursor) {
+  console.log(doc);
+}
+
+cursor.next() gives next document only, if the batch end than MongoDB fetches next batch.
+MongoDB fetches batch 1 (e.g., 101 docs).
+These 101 docs live inside the cursor’s buffer.
+cursor.next() gives you 1 document at a time from that buffer.
+When buffer gets empty → MongoDB automatically fetches next batch.
+You never manually switch batches. MongoDB does it automatically.
+
+When the cursor reaches the end, it’s automatically closed by the server, unless kept alive by an open iteration.
+
+Cursor Object
+The cursor returned by find() is a lazy iterator, meaning it fetches documents only when requested. You can iterate over it using loops or cursor methods.
+
+Cursor Methods
+MongoDB provides powerful cursor methods to control data retrieval and transformation directly from the cursor, avoiding client-side filtering.
+
+a. limit() – Restricts the number of documents returned.
+db.students.find().limit(5)
+
+b. skip() – Skips a specified number of documents before returning results.
+db.students.find().skip(10).limit(5)
+This skips the first 10 documents and then returns the next 5—useful for pagination.
+
+c. sort() – Orders the results based on fields.
+db.students.find().sort({ age: -1 })
+This sorts the result set in descending order of age. Sorting happens before the cursor batches are sent, so it’s efficient.
+
+d. count() – Returns the total number of documents matching a query (without iterating).
+db.students.find({ city: "Pallet Town" }).count()
+
+e. forEach() – Iterates over each document, applying a function.
+db.students.find({ badges: { $gte: 5 } }).forEach(doc => print(doc.name))
+
+
+Cursor Batching and Timeouts
+MongoDB’s cursor operates with batches. The client fetches one batch at a time from the server. If a cursor is idle for more than 10 minutes, MongoDB automatically kills it to free resources (unless you use a no-timeout cursor).
+You can prevent timeout for long operations:
+db.collection.find().noCursorTimeout()
+But use this carefully—it can cause memory leaks if cursors aren’t manually closed.
+To explicitly close a cursor:
+cursor.close()
+
+The aggregation framework also returns a cursor when you run:
+Aggregation cursors allow streaming of results from pipelines—crucial for large data transformations.
+You can also convert aggregation results into an array:
+db.orders.aggregate([...]).toArray()
+
+
+Tailable Cursors (Advanced Concept)
+Tailable cursors are special cursors used on capped collections (fixed-size collections that behave like logs). They don’t close when reaching the end of data; instead, they “tail” the collection and wait for new documents—much like reading a live event stream.
+const cursor = db.transactions_log.find({ type: "deposit" }, { tailable: true });
+while (cursor.alive) {
+  if (cursor.hasNext()) {
+    const txn = cursor.next();
+    print(`Deposit detected: ${txn.amount} by ${txn.accountId}`);
+  }
+}
+
+
+MongoDB stores data in a format called BSON (Binary JSON) — it extends JSON by adding extra data types and encoding it in binary for faster reading and writing. This means MongoDB supports richer datatypes than traditional JSON, enabling it to store numbers, dates, binary data, and special identifiers efficiently.
+
+ObjectId is MongoDB’s default primary key type, automatically assigned to the _id field when a document is inserted without an explicit _id.
+It’s a 12-byte unique identifier that ensures uniqueness across machines and time.
+
+4 bytes: timestamp,
+5 bytes: machine identifier (Derived from hostname + process ID to ensure uniqueness across machines.)
+3 bytes: Incrementing counter
+
+This combination makes each ObjectId globally unique and sortable by creation time, _id is automatically indexed.
+
+
+ObjectId("64f8c123a9b7e1c4c7d89ef0").getTimestamp()
+ISODate("2025-09-06T10:33:39Z")
+
+This is often used for finding when a document was created even if you didn’t store a createdAt field.
+
+When you shard collections (distribute data across servers), using ObjectId as the shard key helps because:
+The timestamp ensures even data distribution over time.
+It prevents hotspots, since new documents naturally move across shards instead of clustering.
+
+Mongoose to interact with MongoDB, which is an ODM (Object Data Modeling) library that provides a higher-level abstraction over MongoDB. Mongoose allows you to define schemas and perform built-in validation.
+
+Schema: A Schema in Mongoose is essentially the blueprint or the structure for your data. It defines the shape of the documents (like the fields and types of data they can contain), validation rules, default values, and other configurations.
+
+Model: A Model is a constructor function that allows you to interact with MongoDB using the schema you've defined. The model provides methods like .save(), .find(), .update(), etc., that can be used to query or modify data in the database. While the Schema defines the data, the Model provides the behavior for interacting with it.
+
+The Schema is concerned only with structure and validation, while the Model is responsible for data manipulation and interaction with the database.
+
+When you create a new user (or any other document) in Mongoose, you're creating an instance of the Model, not directly inserting it into the database.
+
+const userSchema = new Schema({
+  name: { type: String, required: true },      
+  email: { type: String, required: true, unique: true },
+  password: { type: String, required: true },    
+  createdAt: { type: Date, default: Date.now },  // createdAt will default to current date/time
+});
+
+Once you have your Schema, you need to create a Model. A Model is what you use to interact with the database.
+It's a constructor function that allows you to create instances (documents) and perform actions like save(), find(), etc.
+
+const User = mongoose.model('User', userSchema);
+
+mongoose.model(): This method takes two arguments:
+
+'User': The name of the model. This is the name Mongoose uses to create a collection in the database. It will automatically pluralize and lowercase the name to create the collection. So, User will become users in the database.
+userSchema: The schema you defined earlier. This tells Mongoose the structure and rules for the User model.
+
+When you call new User() later, you're creating an instance of this model.
+When you do new User(), you're creating an instance that is not yet saved to the database—it's just an object in memory.
+
+const newUser = new User({
+  name: 'John Doe',
+  email: 'johndoe@example.com',
+  password: 'supersecret',
+});
+
+After creating a new user instance, you can save it to the MongoDB database by calling the .save() method.
+The .save() method is asynchronous, meaning it returns a Promise. If the operation succeeds, it resolves with the saved document, and if it fails (e.g., due to validation errors), it rejects with an error.
